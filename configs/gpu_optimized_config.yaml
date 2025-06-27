@@ -1,0 +1,30 @@
+# GPU优化配置 - 最大化GPU利用率
+adversarial_weight: 0.001
+base_channels: 96           # 增加模型复杂度 (32 -> 96)
+batch_size: 32              # 增大batch size (16 -> 32)
+epochs_per_stage: 50
+grad_clip: 1.0              # 启用梯度裁剪防止爆炸
+lr: 0.0002
+mse_weight: 1.0
+num_blocks: 8               # 增加网络深度 (4 -> 8)
+num_stages: 4
+num_workers: 8              # 大幅增加数据加载并行度 (0 -> 8)
+optimizer: adamw
+patch_size: 192             # 增大patch size增加计算量 (128 -> 192)
+perceptual_weight: 0.1
+scale_factor: 4
+stage_attention: true
+stage_gan: true
+stage_lr_decay: 0.5
+stage_transformer: true
+use_gan: false              # 先不启用GAN，专注于基础训练
+use_perceptual: true        # 启用感知损失增加计算量
+val_freq: 1
+weight_decay: 0.01
+
+# 额外的GPU优化参数
+use_mixed_precision: true   # 启用混合精度训练
+pin_memory: true           # 启用内存固定
+persistent_workers: true   # 保持worker进程
+prefetch_factor: 4         # 预取数据
+compile_model: true        # 启用模型编译优化 

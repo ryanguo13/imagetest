@@ -1,0 +1,23 @@
+adversarial_weight: 0.001
+base_channels: 32
+batch_size: 4
+epochs_per_stage: 5
+grad_clip: 0.0
+lr: 0.0002
+mse_weight: 1.0
+num_blocks: 4
+num_stages: 4
+num_workers: 0
+optimizer: adamw
+patch_size: 128
+perceptual_weight: 0.1
+scale_factor: 4
+stage_attention: true
+stage_gan: true
+stage_lr_decay: 0.5
+stage_transformer: true
+use_gan: false
+use_perceptual: false
+val_freq: 1
+weight_decay: 0.01
+
