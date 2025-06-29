@@ -2,7 +2,7 @@ adversarial_weight: 0.001
 base_channels: 96
 batch_size: 8
 compile_model: true
-epochs_per_stage: 5
+epochs_per_stage: 20
 grad_clip: 0.0
 lr: 0.0002
 mse_weight: 1.0
@@ -26,3 +26,10 @@ use_mixed_precision: true
 use_perceptual: false
 val_freq: 1
 weight_decay: 0.01
+
+# 早停机制配置
+early_stopping_enabled: true
+early_stopping_patience: 7
+early_stopping_min_delta: 0.01
+early_stopping_monitor: psnr
+early_stopping_restore_weights: true

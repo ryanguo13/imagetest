@@ -21,8 +21,13 @@ stage_attention: true
 stage_gan: true
 stage_lr_decay: 0.7
 stage_transformer: true
-use_gan: false
+use_gan: true
 use_mixed_precision: true
 use_perceptual: false
 val_freq: 1
 weight_decay: 0.01
+# early_stopping_enabled: true
+# early_stopping_patience: 13    
+# early_stopping_min_delta: 0.005
+# early_stopping_monitor: psnr
+# early_stopping_restore_weights: true

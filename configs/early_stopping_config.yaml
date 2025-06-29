@@ -1,0 +1,35 @@
+adversarial_weight: 0.001
+base_channels: 64
+batch_size: 4
+compile_model: true
+epochs_per_stage: 50
+grad_clip: 1.0
+gradient_accumulation_steps: 1
+lr: 0.0002
+mse_weight: 1.0
+num_blocks: 8
+num_stages: 4
+num_workers: 4
+optimizer: adamw
+patch_size: 128
+perceptual_weight: 0.1
+persistent_workers: true
+pin_memory: true
+prefetch_factor: 2
+scale_factor: 4
+stage_attention: true
+stage_gan: true
+stage_lr_decay: 0.5
+stage_transformer: true
+use_gan: true
+use_mixed_precision: true
+use_perceptual: false
+val_freq: 1
+weight_decay: 0.01
+
+# 早停机制配置
+early_stopping_enabled: true          # 启用早停机制
+early_stopping_patience: 10           # 等待改善的轮数（比较宽松）
+early_stopping_min_delta: 0.005       # 最小改善阈值（较小值更敏感）
+early_stopping_monitor: psnr          # 监控指标: 'psnr' 或 'loss'
+early_stopping_restore_weights: true  # 停止时恢复最佳权重 11

@@ -40,6 +40,13 @@ class TrainingConfig:
     stage_attention: bool = True
     stage_transformer: bool = True
     stage_gan: bool = True
+    
+    # Early stopping parameters
+    early_stopping_enabled: bool = False
+    early_stopping_patience: int = 10
+    early_stopping_min_delta: float = 0.001
+    early_stopping_monitor: str = 'psnr'
+    early_stopping_restore_weights: bool = True
 
 class ConfigManager:
     """
@@ -324,5 +331,11 @@ DEFAULT_CONFIG = {
     'stage_lr_decay': 0.5,
     'stage_attention': True,
     'stage_transformer': True,
-    'stage_gan': True
+    'stage_gan': True,
+    # Early stopping parameters
+    'early_stopping_enabled': False,
+    'early_stopping_patience': 10,
+    'early_stopping_min_delta': 0.001,
+    'early_stopping_monitor': 'psnr',
+    'early_stopping_restore_weights': True
 } 

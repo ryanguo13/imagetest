@@ -313,7 +313,8 @@ def compare_all_stages(model_dir: str, test_data_dir: str, device: torch.device)
     # 查找所有阶段的模型文件
     stage_files = []
     for stage in range(4):
-        stage_file = os.path.join(model_dir, f"stage_{stage}_final.pth")
+        stage_file = os.path.join(model_dir, f"628_stage_{stage}_final.pth")
+        
         if os.path.exists(stage_file):
             stage_files.append((stage, stage_file))
     

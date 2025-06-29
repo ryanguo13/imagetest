@@ -25,6 +25,74 @@ from modules.lora import ConvLoRA, DistillationLoss, FeatureDistillation
 from modules.transformer import LightweightTransformer
 from modules.gan import GANSplice, AdversarialLoss, PerceptualLoss
 
+class EarlyStopping:
+    """早停机制类"""
+    
+    def __init__(self, patience=7, min_delta=0.001, mode='max', restore_best_weights=True):
+        """
+        Args:
+            patience (int): 等待改善的轮数
+            min_delta (float): 最小改善阈值
+            mode (str): 'max' 表示指标越大越好(如PSNR), 'min' 表示指标越小越好(如loss)
+            restore_best_weights (bool): 是否在停止时恢复最佳权重
+        """
+        self.patience = patience
+        self.min_delta = min_delta
+        self.mode = mode
+        self.restore_best_weights = restore_best_weights
+        
+        self.best_score = None
+        self.counter = 0
+        self.best_weights = None
+        self.should_stop = False
+        
+        # 根据模式设置比较函数
+        if mode == 'max':
+            self.is_better = lambda score, best: score > (best + min_delta)
+        elif mode == 'min':
+            self.is_better = lambda score, best: score < (best - min_delta)
+        else:
+            raise ValueError("mode must be 'max' or 'min'")
+    
+    def __call__(self, current_score, model=None):
+        """
+        检查是否应该早停
+        
+        Args:
+            current_score: 当前轮的验证指标
+            model: 模型对象（用于保存最佳权重）
+            
+        Returns:
+            bool: 是否应该停止训练
+        """
+        if self.best_score is None:
+            self.best_score = current_score
+            if model is not None and self.restore_best_weights:
+                self.best_weights = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+        elif self.is_better(current_score, self.best_score):
+            self.best_score = current_score
+            self.counter = 0
+            if model is not None and self.restore_best_weights:
+                self.best_weights = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+        else:
+            self.counter += 1
+            
+        self.should_stop = self.counter >= self.patience
+        return self.should_stop
+    
+    def restore_weights(self, model):
+        """恢复最佳权重"""
+        if self.best_weights is not None:
+            # 将权重移回GPU
+            best_weights = {k: v.to(model.device) if hasattr(model, 'device') else v 
+                          for k, v in self.best_weights.items()}
+            model.load_state_dict(best_weights)
+            print(f"Restored best weights (score: {self.best_score:.4f})")
+    
+    def get_best_score(self):
+        """获取最佳分数"""
+        return self.best_score
+
 class AdanOptimizer(optim.Optimizer):
     """
     Adan optimizer implementation for faster convergence.
@@ -137,6 +205,10 @@ class MultiStageTrainer:
         self.current_stage = 0
         self.best_psnr = 0.0
         
+        # 早停机制
+        self.early_stopping = None
+        self._init_early_stopping()
+        
         # Initialize model
         self.model = self._build_model()
         self.model.to(self.device)
@@ -155,6 +227,28 @@ class MultiStageTrainer:
         
         # GPU监控
         self.gpu_stats = {'peak_memory': 0, 'current_memory': 0}
+    
+    def _init_early_stopping(self):
+        """初始化早停机制"""
+        if self.config.get('early_stopping_enabled', False):
+            patience = self.config.get('early_stopping_patience', 10)
+            min_delta = self.config.get('early_stopping_min_delta', 0.001)
+            monitor = self.config.get('early_stopping_monitor', 'psnr')  # 'psnr' or 'loss'
+            restore_weights = self.config.get('early_stopping_restore_weights', True)
+            
+            # 根据监控指标设置模式
+            mode = 'max' if monitor == 'psnr' else 'min'
+            
+            self.early_stopping = EarlyStopping(
+                patience=patience,
+                min_delta=min_delta,
+                mode=mode,
+                restore_best_weights=restore_weights
+            )
+            
+            print(f"Early stopping enabled: monitor={monitor}, patience={patience}, min_delta={min_delta}")
+        else:
+            print("Early stopping disabled")
         
     def _build_model(self):
         """Build model based on current stage."""
@@ -457,11 +551,14 @@ class MultiStageTrainer:
         self.config['lr'] *= self.config.get('stage_lr_decay', 0.5)
         self.optimizer = self._build_optimizer()
         
+        # 重置早停机制
+        self._init_early_stopping()
+        
         # 再次清理缓存
         torch.cuda.empty_cache()
 
 def train(config: Dict[str, Any], train_loader: DataLoader, val_loader: DataLoader):
-    """Main training function."""
+    """Main training function with early stopping support."""
     trainer = MultiStageTrainer(config)
     
     for stage in range(config.get('num_stages', 4)):
@@ -471,6 +568,10 @@ def train(config: Dict[str, Any], train_loader: DataLoader, val_loader: DataLoad
         
         print(f"Training stage {trainer.current_stage}")
         
+        # 重置阶段最佳指标
+        stage_best_psnr = 0.0
+        early_stopped = False
+        
         for epoch in range(config['epochs_per_stage']):
             # Train
             train_loss = trainer.train_epoch(train_loader, epoch)
@@ -478,7 +579,7 @@ def train(config: Dict[str, Any], train_loader: DataLoader, val_loader: DataLoad
             # Validate
             if epoch % config.get('val_freq', 1) == 0:
                 psnr, ssim = trainer.validate(val_loader)
-                print(f"Epoch {epoch}: PSNR={psnr:.2f}, SSIM={ssim:.4f}")
+                print(f"Epoch {epoch}: PSNR={psnr:.2f}, SSIM={ssim:.4f}, Loss={train_loss:.6f}")
                 
                 # Save best model
                 if psnr > trainer.best_psnr:
@@ -487,9 +588,50 @@ def train(config: Dict[str, Any], train_loader: DataLoader, val_loader: DataLoad
                         epoch, psnr, 
                         f"models/best_stage_{trainer.current_stage}.pth"
                     )
+                
+                # 更新阶段最佳PSNR
+                if psnr > stage_best_psnr:
+                    stage_best_psnr = psnr
+                
+                # 早停检查
+                if trainer.early_stopping is not None:
+                    monitor_value = psnr if config.get('early_stopping_monitor', 'psnr') == 'psnr' else train_loss
+                    
+                    if trainer.early_stopping(monitor_value, trainer.model):
+                        print(f"Early stopping triggered at epoch {epoch}")
+                        print(f"Best {config.get('early_stopping_monitor', 'psnr')}: {trainer.early_stopping.get_best_score():.4f}")
+                        
+                        # 恢复最佳权重
+                        if config.get('early_stopping_restore_weights', True):
+                            trainer.early_stopping.restore_weights(trainer.model)
+                        
+                        early_stopped = True
+                        break
+            
+            # 每隔几个epoch进行验证（即使early stopping没有触发）
+            elif trainer.early_stopping is not None and epoch % 5 == 0:
+                # 简单验证用于早停检查
+                psnr, _ = trainer.validate(val_loader)
+                monitor_value = psnr if config.get('early_stopping_monitor', 'psnr') == 'psnr' else train_loss
+                
+                if trainer.early_stopping(monitor_value, trainer.model):
+                    print(f"Early stopping triggered at epoch {epoch} (during intermediate check)")
+                    if config.get('early_stopping_restore_weights', True):
+                        trainer.early_stopping.restore_weights(trainer.model)
+                    early_stopped = True
+                    break
+        
+        # 阶段结束总结
+        if early_stopped:
+            print(f"Stage {trainer.current_stage} completed early at epoch {epoch}")
+        else:
+            print(f"Stage {trainer.current_stage} completed all {config['epochs_per_stage']} epochs")
+        
+        print(f"Stage {trainer.current_stage} best PSNR: {stage_best_psnr:.2f}")
         
         # Save stage checkpoint
         trainer.save_checkpoint(
-            config['epochs_per_stage'] - 1, trainer.best_psnr,
+            epoch if early_stopped else config['epochs_per_stage'] - 1, 
+            stage_best_psnr,
             f"models/stage_{trainer.current_stage}_final.pth"
         ) 

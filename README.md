@@ -116,6 +116,13 @@ python src/main.py --mode benchmark \
     --model_path models/best_stage_3.pth
 ```
 
+### Inference
+
+```bash
+python inference.py --model models/stage_1_final.pth --input data/val/LR/00000.png --output result_stage1_00000.png
+
+```
+
 ## 📁 项目结构
 
 ```
